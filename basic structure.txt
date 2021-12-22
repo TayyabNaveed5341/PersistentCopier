@@ -1,0 +1,11 @@
+python pc.py new proj_name src dest
+python pc.py resume proj_name
+
+tasks/
+	<taskname>
+		config
+			{
+			source,dest
+			}
+		initial/
+		attempts/ 
