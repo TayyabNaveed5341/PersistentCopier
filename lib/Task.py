@@ -1,10 +1,10 @@
 import json
 
 from lib.SavePointService import SavePointService
+import time
 from lib.common import Common
 from lib.Paths import Path
 import os
-from time import sleep
 import shutil
 from lib.VersionedFileDirectory import VersionedFileDirectory
 
@@ -20,8 +20,13 @@ class Task:
         self.name = name
         self.full_path = Path.generate_task_path(self.name)
         self.source_path = source
+
+        # task directory structure paths
         self.config_file_path: str = self.full_path + '/config'
-        if self.exists(self.full_path) and (source == "" or destination == ""):  # check of the task already exists
+        self.attempts_path: str = Path.valid_path(self.full_path, self.ATTEMPTS_DIRECTORY_NAME)
+
+        # check of the task already exists
+        if self.exists(self.full_path) and (source == "" or destination == ""):
             config = Common.json_file(self.config_file_path)
             self.source_path = config["source_path"]
             self.DESTINATION_PATH = config["destination_path"]
@@ -59,6 +64,34 @@ class Task:
         initial_list = VersionedFileDirectory(initial_list_path).get(age)
         return json.loads(initial_list)
 
+    def get_versioned_attempts_list(self, age: int = 0):
+        attempts_list = VersionedFileDirectory(self.attempts_path)
+        return json.loads(attempts_list.get(age))
+
+    def update_base_path(self, old_path, new_path):
+        print("Reading initial list")
+        initial_list: dict = self.get_versioned_initial_list()
+        print("updating paths")
+        initial_list["files"] = [path.replace(old_path, new_path) for path in initial_list["files"]]
+        initial_list["remaining"] = [path.replace(old_path, new_path) for path in initial_list["remaining"]]
+        initial_list["failed"] = [path.replace(old_path, new_path) for path in initial_list["failed"]]
+        print("Writing updated paths")
+        Common.json_file(
+            Path.valid_path(self.full_path, self.INITIAL_DIRECTORY_NAME+"/"+str(time.time_ns())), initial_list
+        )
+
+        print("Reading attempts")
+        if self.exists(self.attempts_path):
+            attempts_list = self.get_versioned_attempts_list()
+            print("updating paths")
+            attempts_list["queue"] = [path.replace(old_path, new_path) for path in attempts_list["queue"]]
+            attempts_list["failed"] = [path.replace(old_path, new_path) for path in attempts_list["failed"]]
+            print("Writing updated paths")
+            Common.json_file(
+                Path.valid_path(self.full_path, self.ATTEMPTS_DIRECTORY_NAME + "/" + str(time.time_ns())),
+                attempts_list
+            )
+
     def generate_initial_list(self):
         if self.exists(Path.valid_path(self.full_path, self.ATTEMPTS_DIRECTORY_NAME)):
             return True
@@ -71,20 +104,25 @@ class Task:
             init = {
                 "current": "",
                 "files": [],
-                "remaining": [self.source_path]
+                "remaining": [self.source_path],
+                "failed": []
             }
         save_point_service = SavePointService(init, Path.valid_path(self.full_path, self.INITIAL_DIRECTORY_NAME))
         while init['remaining']:
             init['current'] = init['remaining'].pop()
             print(init['current'])
-            sleep(0.0625)
-            for child in os.listdir(init['current']):
-                save_point_service.run_pending()
-                path = Path.valid_path(init['current'], child)
-                if os.path.isdir(path):
-                    init['remaining'].append(path + "/")
-                elif os.path.isfile(path):
-                    init['files'].append(path)
+            time.sleep(0.0625)
+            try:
+                for child in os.listdir(init['current']):
+                    save_point_service.run_pending()
+                    path = Path.valid_path(init['current'], child)
+                    if os.path.isdir(path):
+                        init['remaining'].append(path + "/")
+                    elif os.path.isfile(path):
+                        init['files'].append(path)
+            except OSError as osError:
+                print("unable to read directory contents")
+                init["failed"].append(init["current"])
         init['current'] = ""
         save_point_service.backup()
         del save_point_service
@@ -94,8 +132,7 @@ class Task:
         initial = self.get_versioned_initial_list()
         attempts_path: str = Path.valid_path(self.full_path, self.ATTEMPTS_DIRECTORY_NAME)
         if self.exists(attempts_path):
-            attempts_list = VersionedFileDirectory(attempts_path)
-            attempt = json.loads(attempts_list.get())
+            attempt = self.get_versioned_attempts_list()
         else:
             try:
                 os.makedirs(Path.valid_path(self.full_path, self.ATTEMPTS_DIRECTORY_NAME))
@@ -119,7 +156,17 @@ class Task:
                     os.makedirs(dst, exist_ok=True)
                     shutil.copy(attempt["current"], dst)
                 except FileNotFoundError as fileNotFoundError:
-                    exit('NOT FOUND')
+                    print("NOT FOUND")
+                    choice = input("What would you like to do:\n(1) Skip forever\n(2) Try later\n(3)Terminate program\nEnter choice:")
+                    if choice == "1":
+                        print("File skipped and forgotten")
+                    elif choice == "2":
+                        attempt["failed"].append(attempt["current"])
+                        print("Will try again in next iteration")
+                    else:
+                        del save_point_service
+                        exit("program terminated")
+
                 except BaseException as be:
                     print(be.__class__)
                     attempt["failed"].append(attempt["current"])
