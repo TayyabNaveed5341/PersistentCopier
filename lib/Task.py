@@ -68,6 +68,25 @@ class Task:
         attempts_list = VersionedFileDirectory(self.attempts_path)
         return json.loads(attempts_list.get(age))
 
+    def write_versioned_attempts_list(self, data):
+        Common.json_file(
+            Path.valid_path(self.full_path, self.ATTEMPTS_DIRECTORY_NAME + "/" + str(time.time_ns())), data
+        )
+
+    def postpone_from_current_attempt(self, path_keyword: str):
+        attempt = self.get_versioned_attempts_list()
+        kept = []
+        postponed_file_count: int = 0
+        for path in attempt["queue"]:
+            if path_keyword in path:
+                attempt["failed"].append(path)
+                postponed_file_count += 1
+            else:
+                kept.append(path)
+        attempt["queue"] = kept
+        self.write_versioned_attempts_list(attempt)
+        return postponed_file_count
+
     def update_base_path(self, old_path, new_path):
         print("Reading initial list")
         initial_list: dict = self.get_versioned_initial_list()

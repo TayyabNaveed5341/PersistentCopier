@@ -1,6 +1,16 @@
-python pc.py new proj_name src dest
-python pc.py resume proj_name
+create and start new task
+python main.py new proj_name src dest
 
+resume existing task
+python main.py resume proj_name
+
+skip paths (main.py must be stopped beforehand)
+python skip_paths.py task_name path/to/match action
+   valid actions
+    postpone   (selected paths will be skipped and tried in the next attempt)
+    forget      (selected paths will be completely ignored)
+
+structure
 tasks/
 	<taskname>
 		config
