@@ -20,7 +20,9 @@ def main(argv: list, arg_c: int):
     if not task.exists(task.full_path):
         exit("Task not found")
     if action == "forget":
-        exit("not implemented")
+        print("Looking for "+path_keyword)
+        forgotten_file_count = task.remove_paths_from_attempt_list(path_keyword)
+        print(str(forgotten_file_count)+" files forgotten.")
     elif action == "postpone":
         postponed_file_count = task.postpone_from_current_attempt(path_keyword)
         print(str(postponed_file_count)+" files skipped.")

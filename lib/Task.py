@@ -33,6 +33,31 @@ class Task:
         else:
             self.create_new()
 
+    def remove_paths_from_attempt_list(self, path_keyword):
+        attempt = self.get_versioned_attempts_list()
+        kept = []
+        forgotten_file_count: int = 0
+
+        for path in attempt["queue"]:
+            if path_keyword in path:
+                print("removing "+path+" from primary queue")
+                forgotten_file_count += 1
+            else:
+                kept.append(path)
+        attempt["queue"].clear()
+        attempt["queue"].extend(kept)
+
+        kept.clear()
+        for path in attempt["failed"]:
+            if path_keyword in path:
+                print("removing " + path + " from secondary queue")
+                forgotten_file_count += 1
+            else:
+                kept.append(path)
+        attempt["failed"] = kept
+        self.write_versioned_attempts_list(attempt)
+        return forgotten_file_count
+
     def abort_creation(self, message: str):
         print(message, '\nrolling back')
         shutil.rmtree(self.full_path)
